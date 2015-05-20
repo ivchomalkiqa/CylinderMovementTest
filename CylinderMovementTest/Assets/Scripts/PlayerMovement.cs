@@ -148,7 +148,7 @@ public class PlayerMovement : MonoBehaviour {
 		// Check every contact point
 		foreach (ContactPoint cp in collision.contacts) {
 			if (Vector3.Dot (GetForwardVector (), cp.normal) < 0	// This dot product determines whether the collision point is in the direction of movement
-			    && cp.point.y > playerLowestY && cp.point.y < playerHighestY) {	// This determines whether the collision is on the side, and not on the top or bottom of the box
+			    && cp.point.y >= playerLowestY && cp.point.y <= playerHighestY) {	// This determines whether the collision is on the side, and not on the top or bottom of the box
 				result = true;
 				break;
 			}
