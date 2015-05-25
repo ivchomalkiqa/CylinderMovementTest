@@ -9,11 +9,14 @@ public class PlayerMovement : MonoBehaviour {
 	public float jumpVelocity;
 	// The script sets the global gravity of the physics engine to this value
 	public float gravityAcceleration;
+	// This is the terminal velocity for the player
 	public float maxVerticalVelocity;
-
+	// The sideway speed of the player
 	public float movingSpeed;
 	// This is the position of the column, around which the player is moving
 	public Vector3 columnPosition;
+	public Vector3 playerExtents;
+
 	// This is the horizontal movement direction of the player
 	Direction movementDirection;
 	// If the "Jump" button is pressed down, this flag is true and
@@ -22,16 +25,11 @@ public class PlayerMovement : MonoBehaviour {
 	// Turns true when the player lands on a platform, 
 	// thus allowing the player to jump
 	bool landed = false;
-	// If this flag turns true, it would stop the sideways
-	// movement, since the player has collided with something in the front
-	bool collidedInFront = false;
-	// Reference to the Collider for purposes of determining its size
-	BoxCollider boxCollider;
-	// These are used to keep track of which collider we are currently on top of, 
-	// and which one we are hitting from the side
-	Collider floor, wall;
 
 	float currentVerticalVelocity;
+
+	// A reference to the raycasting script, which will detect the side on which we collide
+	CollisionRaycasting cr;
 
 	//Number of jumps allowed
 	public int maxJumps;
@@ -41,10 +39,8 @@ public class PlayerMovement : MonoBehaviour {
 		// Initally the player is not moving
 		movementDirection = Direction.Stopped;
 
-		boxCollider = GetComponent<BoxCollider> ();
-		if (boxCollider == null) {
-			Debug.LogError ("Could not find a collider in PlayerMovement.cs!");
-		}
+		// Get a reference to the ray casting script
+		cr = GetComponent <CollisionRaycasting> ();
 
 		//Initializing number of jumps to 0
 		jumps = 0;
@@ -65,11 +61,8 @@ public class PlayerMovement : MonoBehaviour {
 		// Check if the user pressed the left or right arrow keys, or axis, wtv.
 		if (Input.GetAxis ("Horizontal") > 0 && movementDirection != Direction.Right) {
 			movementDirection = Direction.Right;
-			collidedInFront = false;	// Set this to false to solve the problem where
-									// a player cannot reverse once hit an obstacle in front (probably won't be necessary in the real game)
 		} else if (Input.GetAxis ("Horizontal") < 0 && movementDirection != Direction.Left) {
 			movementDirection = Direction.Left;
-			collidedInFront = false;
 		}
 		// Restart if player falls off
 		if (transform.position.y < -10) {
@@ -78,35 +71,108 @@ public class PlayerMovement : MonoBehaviour {
 	}
 
 	void FixedUpdate () {
-		if(landed){
-			jumps = 0;
-		}
+		// Do collision detection
+		cr.CheckForCollisions ();
+		ResolveVerticalCollisions (Time.deltaTime);
+
+		// JUMP code
 		//if (shouldJump && landed && !collidedInFront) { // Jump only if on the ground and not colliding in front
 		if (shouldJump && jumps <= maxJumps) {// Jump only if number of jumps done in the air are less than maximum allowed jumps
+			jumps++;
 			currentVerticalVelocity = jumpVelocity;
 			landed = false;		// We jumped, what'd you expect!
 			shouldJump = false;
 		}
-		if (!landed) {
-			AddGravity ();
-		}
-		// Move the player if it is not colliding with something in the front
-		if (!collidedInFront && movementDirection != Direction.Stopped) {	
-			MovePlayer(movementDirection, movingSpeed, Time.deltaTime);
+
+		ResolveHorizontalCollisions (Time.deltaTime);
+	}
+
+
+	// Deals with resolving all collisions and solving potential overlaps of the
+	// player and obstacles in the vertical direction
+	void ResolveVerticalCollisions (float deltaTime) {
+		// Deal with collisions from above
+		if (WillHitCeilingThisUpdate (deltaTime)) {
+			// If we collide above, simply set the vertical speed to 0
+			currentVerticalVelocity = 0;
+			// Also avoid overlapping by positioning the player vertically to touch the obstacle
+			transform.position = new Vector3 (transform.position.x,
+			                                  cr.collisionPointAbove.y - playerExtents.y,
+			                                  transform.position.z);
+		} 
+
+		// Deal with collisions from below
+		if (landed) {
+			if (!cr.collidedBelow) {
+				landed = false;
+				AddGravityAndMoveVertically (deltaTime);
+			} else {
+				// Do nothing, we are still on the platform
+			}
+		} else {
+			// We have not landed and we are approaching surface from below, check if we will
+			// land on it this update or not.
+			if (WillLandThisUpdate (deltaTime)) {
+				// We are landing now!
+				landed = true;
+				currentVerticalVelocity = 0;
+				jumps = 0;
+				// Set the position of the player to be on top of the platform on which we have landed
+				transform.position = new Vector3 (transform.position.x,
+				                                  cr.collisionPointBelow.y + playerExtents.y,
+				                                  transform.position.z);
+			} else {
+				// We will not land this update, so just add gravity as usual
+				AddGravityAndMoveVertically (deltaTime);
+			}
 		}
 	}
 
-	// Accelerate the player down due to the force of gravity
-	void AddGravity () {
+	bool WillHitCeilingThisUpdate (float deltaTime) {
+		if (!cr.collidedAbove) {
+			return false;
+		}
+		// See if we will move past the projected point of collision 
+		// above in this frame
+		float heighestPointAfterMovement = transform.position.y 
+			+ (currentVerticalVelocity * deltaTime)
+				+ playerExtents.y;
+		return heighestPointAfterMovement >= cr.collisionPointAbove.y;
+	}
+
+	bool WillLandThisUpdate (float deltaTime) { 
+		if (!cr.collidedBelow) {
+			return false;
+		}
+		// See if this frame we will move past the projected point of collision
+		// under us in this frame
+		float lowestPointAfterMovement = transform.position.y 
+			+ (currentVerticalVelocity * deltaTime)
+				- playerExtents.y;
+		return lowestPointAfterMovement <= cr.collisionPointBelow.y;
+	}
+
+	// Accelerates the player down using the specified gravity acceleration
+	void AddGravityAndMoveVertically (float deltaTime) {
 		// Accelerate vertically due to gravity
-		currentVerticalVelocity -= gravityAcceleration * Time.deltaTime;
+		currentVerticalVelocity -= gravityAcceleration * deltaTime;
 		if (currentVerticalVelocity > maxVerticalVelocity) {
 			currentVerticalVelocity = maxVerticalVelocity;
 		}
+
 		// Update position
 		Vector3 tmp = transform.position;
-		tmp.y += currentVerticalVelocity * Time.deltaTime;
+		tmp.y += currentVerticalVelocity * deltaTime;
 		transform.position = tmp;
+	}
+
+	void ResolveHorizontalCollisions (float deltaTime) {
+		// Check only for the direction that we are moving in
+		if ((movementDirection == Direction.Right && cr.collidedRight) ||
+		    (movementDirection == Direction.Left && cr.collidedLeft)) {
+		} else {
+			MovePlayer (movementDirection, movingSpeed, deltaTime);
+		}
 	}
 
 	// Moves the player left or right on a cirular arc around the cylinder/pole/level
@@ -128,152 +194,5 @@ public class PlayerMovement : MonoBehaviour {
 		} else if (direction == Direction.Right) {
 			transform.RotateAround (columnPosition, Vector3.up, -angleTravelled);
 		}
-	}
-
-	// We are using triggers now. This method is called for every other collider
-	// that enters this trigger (The collider which is a component of this game object
-	// and is set to trigger).
-	void OnTriggerEnter(Collider other) {
-		Vector3 closestPoint;
-		Vector3 faceNormal;
-		GenerateCollisionInformation (out closestPoint, out faceNormal, other);
-		if (CollidedFromBelow (faceNormal)) {
-			landed = true;
-			floor = other;
-			FixOverlap (closestPoint, faceNormal);
-		} else if (CollidedFromTheFrontSide (faceNormal)) {
-			collidedInFront = true;
-			wall = other;
-		} else if (CollidedFromAbove (faceNormal) && currentVerticalVelocity > 0) {
-			currentVerticalVelocity = 0;
-		}
-	}
-
-	void OnTriggerExit (Collider other) {
-		if (other == floor) {
-			// We have separated from the floor, i.e. we have jumped
-			landed = false;
-			floor = null;
-		} else if (other == wall) {
-			collidedInFront = false;
-			wall = null;
-		}
-	}
-
-	// This method finds the point on the other collider's bounds that is closest to this gameObject,
-	// and also determines the normal of the local face which collided with the other collider.
-	// The method also returns false or true depending if a normal was found or not.
-	bool GenerateCollisionInformation (out Vector3 closestPointOnOther, out Vector3 faceNormal, 
-	                                   Collider other) {
-		// Find the closest point to our centre on the other collider that we have collided with
-		closestPointOnOther = GetClosestPoint (other);
-		// The problem with raycasting is that if we start the ray from within our collider, it will
-		// not detect our collider. And there's a very very good chance that when this method gets called
-		// our collider and the other collider will be overlapping, which means that the closestPointOnOther
-		// will be within us... problem. We need to find a point outside our collider on the same line as the
-		// line defined by the centre of us and the closestPointOnOther
-		Vector3 rayOrigin = closestPointOnOther + (closestPointOnOther - transform.position);
-
-		// Construct the ray and see which of our collider's faces it hits
-		Ray myRay = new Ray (rayOrigin, transform.position - closestPointOnOther);	
-		RaycastHit rayHit;
-
-		if (Physics.Raycast (myRay, out rayHit, 10, 1 << 8)) {
-			// If the ray hit the player
-			faceNormal = rayHit.normal;	// Get the normal
-
-			//Debug.DrawLine (myRay.origin, rayHit.point, Color.white, 5f);
-			Debug.DrawRay (closestPointOnOther, Vector3.up, Color.cyan, 5f);
-			//Debug.DrawRay (myRay.origin, myRay.direction, Color.yellow, 5f);
-			//Debug.Log (boxCollider.transform.InverseTransformDirection (faceNormal));
-			//EditorApplication.isPaused = true;	// These 4 lines are all debug code
-			return true;
-		} else {
-			faceNormal = Vector3.zero;
-			return false;
-		}
-	}
-
-	// This is a cheat really. It returns a close point, but not the closest
-	// Wtv. Since unity's closestPointOnBounds works with axis-oriented bounding boxes I have no other choice
-	Vector3 GetClosestPoint (Collider other) {
-		// The basic idea is to shoot a ray in every direction, until we hit the collider
-		// specified in the argument. The place where we hit is the place where we have
-		// the closest point.
-		// Shoot down.
-		RaycastHit hit;
-		if (CastRayFromCenter (Vector3.down, out hit) == other) {
-			return hit.point;
-		} else if (CastRayFromCenter (Vector3.right, out hit) == other) {
-			return hit.point;
-		} else if (CastRayFromCenter (Vector3.left, out hit) == other) {
-			return hit.point;
-		} else if (CastRayFromCenter (Vector3.up, out hit) == other) {
-			return hit.point;
-		} else {
-			return Vector3.zero;
-		}
-	}
-
-	Collider CastRayFromCenter (Vector3 direction, out RaycastHit hit) {
-		// Find the point in the centre of the back face of the player
-		Vector3 origin = transform.position;
-		Ray myRay = new Ray (origin, transform.TransformDirection (direction));
-		Physics.Raycast (myRay, out hit);
-		return hit.collider;
-	}
-
-	// When this collider collides with another one and the trigger
-	// is fired, the two colliders might be overlapping a bit.
-	// This mathod un-overlaps the player from the other collider.
-	void FixOverlap (Vector3 closestPoint, Vector3 localFaceNormal) {
-		// Move us in opposite direction of the face normal until the closest
-		// point of the other collider coincides with the edge of the player (they are just touching)
-
-		// This is the projection of the extend vector defining half of the size of the player's box, along the normal
-		// In other words, this calculation determines half of the length of the box in the direction of the normal
-		float widthAlongNormal = Mathf.Abs (Vector3.Dot (boxCollider.bounds.extents, localFaceNormal));
-		// This is the projection of the vector from the centre of the player to the closestPoint on the other collider, along the normal
-		// In other words, this is the length in direction of the normal between the centre of the transform up to the closestPoint
-		float distanceToClosestPointAlongNormal = Mathf.Abs (Vector3.Dot (closestPoint - transform.position, localFaceNormal));
-		// The difference between these two projectsion is how much we should move along in the normal direction to remove any overlaps
-		Vector3 overlapCompensation = (distanceToClosestPointAlongNormal - widthAlongNormal) * localFaceNormal;
-		// Apply compensation to transform
-		Vector3 tmp = transform.position;
-		tmp += overlapCompensation;
-		transform.position = tmp;
-	}
-
-	// Returns true if the local face normal corresponds
-	// the the bottom face of the player
-	bool CollidedFromBelow (Vector3 faceNormal) {
-		// Transform the face normal from global space coordinates into local space coordinates
-		Vector3 localFaceNormal = transform.InverseTransformDirection (faceNormal);
-		return localFaceNormal == Vector3.down;
-	}
-
-	// Returns true if this collider has hit something
-	// from the front
-	bool CollidedFromTheFrontSide (Vector3 faceNormal) {
-		Vector3 localFaceNormal = transform.InverseTransformDirection (faceNormal);
-		return localFaceNormal == GetForwardVector ();
-	}
-
-	// Returns a unit vector pointing in the direction of movement of the player 
-	// IN LOCAL COORDINATE SYSTEM FOR THE PLAYER (i.e. returns Vector.right or Vector.left)
-	Vector3 GetForwardVector () {
-		if (movementDirection == Direction.Left) {
-			return Vector3.left;
-		} else {
-			return Vector3.right;
-		}
-	}
-
-	// Returns true if this collider has hit something
-	// above it.
-	bool CollidedFromAbove (Vector3 faceNormal) {
-		// Transform the face normal from global space coordinates into local space coordinates
-		Vector3 localFaceNormal = transform.TransformDirection (faceNormal);
-		return localFaceNormal == Vector3.up;
 	}
 }
