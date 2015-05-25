@@ -1,6 +1,5 @@
 ﻿using UnityEngine;
 using System.Collections;
-using UnityEditor;
 
 public class PlayerMovement : MonoBehaviour {
 
@@ -49,9 +48,13 @@ public class PlayerMovement : MonoBehaviour {
 	}
 
 	void Update () {
+		// TODO Delete this if this script is not the main controller script for the application
+		if (Input.GetKey (KeyCode.Escape)) {
+			Application.Quit ();
+		}
+
 		// Check if the user pressed the jump button
 		if (Input.GetButtonDown ("Jump")) {
-			jumps++;
 			shouldJump = true;
 
 		} else if (Input.GetButtonUp ("Jump")) {
@@ -73,16 +76,21 @@ public class PlayerMovement : MonoBehaviour {
 	void FixedUpdate () {
 		// Do collision detection
 		cr.CheckForCollisions ();
-		ResolveVerticalCollisions (Time.deltaTime);
 
-		// JUMP code
-		//if (shouldJump && landed && !collidedInFront) { // Jump only if on the ground and not colliding in front
-		if (shouldJump && jumps <= maxJumps) {// Jump only if number of jumps done in the air are less than maximum allowed jumps
+		// Treat the jumps before resolving vertical collisions, because the code that physically moves the 
+		// player is executed when the ResolveVerticalCollisions method is called
+		if (shouldJump && jumps < maxJumps) {// Jump only if number of jumps done in the air are less than maximum allowed jumps
 			jumps++;
 			currentVerticalVelocity = jumpVelocity;
 			landed = false;		// We jumped, what'd you expect!
 			shouldJump = false;
 		}
+
+		ResolveVerticalCollisions (Time.deltaTime);
+
+		// JUMP code
+		//if (shouldJump && landed && !collidedInFront) { // Jump only if on the ground and not colliding in front
+
 
 		ResolveHorizontalCollisions (Time.deltaTime);
 	}
