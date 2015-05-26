@@ -125,10 +125,13 @@ public class PlayerMovement : MonoBehaviour {
 				landed = true;
 				currentVerticalVelocity = 0;
 				jumps = 0;
-				// Set the position of the player to be on top of the platform on which we have landed
-				transform.position = new Vector3 (transform.position.x,
-				                                  cr.collisionPointBelow.y + playerExtents.y,
-				                                  transform.position.z);
+				// Land the player on the platform below
+				LandPlayerOnPlatformBelow ();
+				// Finally, see if the platform which we landed on has the FallingPlatform script,
+				// and call its StartFalling () method if it does.
+				if (cr.colliderBelow.tag == "FallingPlatform") {
+					cr.colliderBelow.gameObject.GetComponent<FallingPlatform> ().StartFalling ();
+				}
 			} else {
 				// We will not land this update, so just add gravity as usual
 				AddGravityAndMoveVertically (deltaTime);
@@ -158,6 +161,17 @@ public class PlayerMovement : MonoBehaviour {
 			+ (currentVerticalVelocity * deltaTime)
 				- playerExtents.y;
 		return lowestPointAfterMovement <= cr.collisionPointBelow.y;
+	}
+
+	// Sets the player's position to be right on top of the platform
+	// below and rotates it according to the angle at which the platform 
+	// is tilted.
+	void LandPlayerOnPlatformBelow () {
+		// TODO Add code to rotate player according to platform tilt
+		// Set the position of the player to be on top of the platform on which we have landed
+		transform.position = new Vector3 (transform.position.x,
+		                                  cr.collisionPointBelow.y + playerExtents.y,
+		                                  transform.position.z);
 	}
 
 	// Accelerates the player down using the specified gravity acceleration

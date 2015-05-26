@@ -21,7 +21,7 @@ public class FallingPlatform : MonoBehaviour {
 			tmp.y -= currentVelocity * Time.deltaTime;
 			transform.position = tmp;
 		} else if (playerLanded) {
-			// Oho the player has landed, his living days are running out
+			// Oho the player has landed, start the fall countdown
 			timeUntilFall -= Time.deltaTime;
 			if (timeUntilFall <= 0) {
 				// Time to drop
@@ -32,9 +32,13 @@ public class FallingPlatform : MonoBehaviour {
 
 	void OnCollisionEnter (Collision collision) {
 		if (collision.collider.tag == "Player") {
-			// We gotsta fall
-			timeUntilFall = fallDelay;
-			playerLanded = true;
+			StartFalling ();
 		}
+	}
+
+	public void StartFalling() {
+		// We gotsta fall
+		timeUntilFall = fallDelay;
+		playerLanded = true;
 	}
 }

@@ -21,6 +21,10 @@ public class CollisionRaycasting : MonoBehaviour {
 	public Vector3 collisionPointLeft;
 	public Vector3 collisionPointRight;
 
+	// Save only the collider below for now, to allow classes that use CollisionRaycasting.cs
+	// to communicate with the platforms underneath.
+	public Collider colliderBelow;
+
 	RaycastHit hit;
 
 	// These game objects are children of this gameobject with the same names as the 
@@ -83,26 +87,34 @@ public class CollisionRaycasting : MonoBehaviour {
 		collidedLeft = false;
 		collidedRight = false;
 
+		// Reset the collision points to be as far from the player as possible
+		collisionPointAbove.y = Mathf.Infinity;
+		collisionPointBelow.y = - Mathf.Infinity;
+
 		bool hasCollisions = false;
 
 		// Do collisions up
 		foreach (Transform t in up) {
 			Vector3 direction = Vector3.up;
-			if (Physics.Raycast (t.position, direction, out hit, verticalRayDistance)) {
+			if (Physics.Raycast (t.position, direction, out hit, verticalRayDistance) &&
+			    	collisionPointAbove.y >= hit.point.y) {
+				// If we get a hit, and it is closer to the player than previous hits
 				hasCollisions = true;
 				collidedAbove = true;
-				collisionPointAbove = hit.point;
-				break;
+				collisionPointAbove = hit.point;	// assign this hit as the newest closest hit from above
 			}
 		}
 		// Do collisions down
 		foreach (Transform t in down) {
 			Vector3 direction = Vector3.down;
-			if (Physics.Raycast (t.position, direction, out hit, verticalRayDistance)) {
+			if (Physics.Raycast (t.position, direction, out hit, verticalRayDistance) &&
+			    	collisionPointBelow.y <= hit.point.y) {
+				// If we get a hit, and it is closer to the player than previous hits
 				hasCollisions = true;
 				collidedBelow = true;
-				collisionPointBelow = hit.point;
-				break;
+				collisionPointBelow = hit.point;	// assign this hit as the newest closest hit from below
+				// Also save the collider below
+				colliderBelow = hit.collider;
 			}
 		}
 		// Do collisions right
@@ -112,7 +124,7 @@ public class CollisionRaycasting : MonoBehaviour {
 				hasCollisions = true;
 				collidedRight = true;
 				collisionPointRight = hit.point;
-				break;
+				break;	// Stop looking at the first intersection of the ray that we find
 			}
 		}
 		// Do collisions left
@@ -122,7 +134,7 @@ public class CollisionRaycasting : MonoBehaviour {
 				hasCollisions = true;
 				collidedLeft = true;
 				collisionPointLeft = hit.point;
-				break;
+				break;	// Stop looking at the first intersection of the ray that we find
 			}
 		}
 		return hasCollisions;
