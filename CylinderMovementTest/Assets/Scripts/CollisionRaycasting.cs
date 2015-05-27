@@ -10,20 +10,21 @@ public class CollisionRaycasting : MonoBehaviour {
 	// Shows the rays in the editor for debugging
 	public bool showRays;
 
-	public bool collidedAbove;
-	public bool collidedBelow;
-	public bool collidedLeft;
-	public bool collidedRight;
+	// Properties that allow other scripts to check whether a collision has occured on a given side
+	public bool collidedAbove { get; set; }
+	public bool collidedBelow { get; set; }
+	public bool collidedLeft { get; set; }
+	public bool collidedRight { get; set; }
 
 	// If there is a collision, this is the position of that collision
-	public Vector3 collisionPointAbove;
-	public Vector3 collisionPointBelow;
-	public Vector3 collisionPointLeft;
-	public Vector3 collisionPointRight;
+	public Vector3 collisionPointAbove { get; set; }
+	public Vector3 collisionPointBelow { get; set; }
+	public Vector3 collisionPointLeft { get; set; }
+	public Vector3 collisionPointRight { get; set; }
 
 	// Save only the collider below for now, to allow classes that use CollisionRaycasting.cs
 	// to communicate with the platforms underneath.
-	public Collider colliderBelow;
+	public RaycastHit hitBelow;
 
 	RaycastHit hit;
 
@@ -63,10 +64,12 @@ public class CollisionRaycasting : MonoBehaviour {
 	// by this script
 	void DrawDebugRays () {
 		foreach (Transform t in up) {
-			Debug.DrawLine (t.position, t.position + (verticalRayDistance * Vector3.up), Color.green);
+			Debug.DrawLine (t.position, t.position + 
+			                (verticalRayDistance * (transform.rotation * Vector3.up)), Color.green);
 		}
 		foreach (Transform t in down) {
-			Debug.DrawLine (t.position, t.position + (verticalRayDistance * Vector3.down), Color.green);
+			Debug.DrawLine (t.position, t.position + 
+			                (verticalRayDistance * (transform.rotation * Vector3.down)), Color.green);
 		}
 		foreach (Transform t in left) {
 			// Since the player rotates around the y-axis, we will need to rotate the left vector
@@ -88,14 +91,14 @@ public class CollisionRaycasting : MonoBehaviour {
 		collidedRight = false;
 
 		// Reset the collision points to be as far from the player as possible
-		collisionPointAbove.y = Mathf.Infinity;
-		collisionPointBelow.y = - Mathf.Infinity;
+		collisionPointAbove = new Vector3 (0, Mathf.Infinity, 0);
+		collisionPointBelow = new Vector3 (0, -Mathf.Infinity, 0);
 
 		bool hasCollisions = false;
 
 		// Do collisions up
 		foreach (Transform t in up) {
-			Vector3 direction = Vector3.up;
+			Vector3 direction = transform.rotation * Vector3.up;
 			if (Physics.Raycast (t.position, direction, out hit, verticalRayDistance) &&
 			    	collisionPointAbove.y >= hit.point.y) {
 				// If we get a hit, and it is closer to the player than previous hits
@@ -106,7 +109,7 @@ public class CollisionRaycasting : MonoBehaviour {
 		}
 		// Do collisions down
 		foreach (Transform t in down) {
-			Vector3 direction = Vector3.down;
+			Vector3 direction = transform.rotation * Vector3.down;
 			if (Physics.Raycast (t.position, direction, out hit, verticalRayDistance) &&
 			    	collisionPointBelow.y <= hit.point.y) {
 				// If we get a hit, and it is closer to the player than previous hits
@@ -114,7 +117,8 @@ public class CollisionRaycasting : MonoBehaviour {
 				collidedBelow = true;
 				collisionPointBelow = hit.point;	// assign this hit as the newest closest hit from below
 				// Also save the collider below
-				colliderBelow = hit.collider;
+				hitBelow = hit;
+				hit = new RaycastHit();
 			}
 		}
 		// Do collisions right

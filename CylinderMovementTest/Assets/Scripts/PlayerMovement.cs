@@ -1,5 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
+using UnityEditor;
 
 public class PlayerMovement : MonoBehaviour {
 
@@ -12,6 +13,8 @@ public class PlayerMovement : MonoBehaviour {
 	public float maxVerticalVelocity;
 	// The sideway speed of the player
 	public float movingSpeed;
+	// This can control how fast the player tilts 
+	public float tiltingSpeed;
 	// This is the position of the column, around which the player is moving
 	public Vector3 columnPosition;
 	public Vector3 playerExtents;
@@ -26,6 +29,10 @@ public class PlayerMovement : MonoBehaviour {
 	bool landed = false;
 
 	float currentVerticalVelocity;
+
+	// Vars taking care of player rotation
+	public float currentPlayerTilt { get; set; }
+	float desiredPlayerTilt;
 
 	// A reference to the raycasting script, which will detect the side on which we collide
 	CollisionRaycasting cr;
@@ -68,8 +75,15 @@ public class PlayerMovement : MonoBehaviour {
 			movementDirection = Direction.Left;
 		}
 		// Restart if player falls off
-		if (transform.position.y < -10) {
+		if (transform.parent.position.y < -10) {
 			Application.LoadLevel(Application.loadedLevel);
+		}
+		// If the current tilt of the player does not match the desired tilt, interpolate to match it
+		if (currentPlayerTilt != desiredPlayerTilt) {
+			float angleChange = desiredPlayerTilt - currentPlayerTilt;
+			angleChange = Mathf.Lerp(0, angleChange, Time.deltaTime * tiltingSpeed);
+			currentPlayerTilt += angleChange;
+			transform.Rotate (0, 0, angleChange);
 		}
 	}
 
@@ -84,6 +98,8 @@ public class PlayerMovement : MonoBehaviour {
 			currentVerticalVelocity = jumpVelocity;
 			landed = false;		// We jumped, what'd you expect!
 			shouldJump = false;
+			// Also, when we jump, reset the player tilt to default, or zero
+			desiredPlayerTilt = 0;
 		}
 
 		ResolveVerticalCollisions (Time.deltaTime);
@@ -104,9 +120,9 @@ public class PlayerMovement : MonoBehaviour {
 			// If we collide above, simply set the vertical speed to 0
 			currentVerticalVelocity = 0;
 			// Also avoid overlapping by positioning the player vertically to touch the obstacle
-			transform.position = new Vector3 (transform.position.x,
+			transform.parent.position = new Vector3 (transform.parent.position.x,
 			                                  cr.collisionPointAbove.y - playerExtents.y,
-			                                  transform.position.z);
+			                                  transform.parent.position.z);
 		} 
 
 		// Deal with collisions from below
@@ -118,6 +134,14 @@ public class PlayerMovement : MonoBehaviour {
 				// Do nothing, we are still on the platform
 			}
 		} else {
+			// Update the player desired tilt if necessary
+			if (cr.collidedBelow && currentVerticalVelocity < 0) {
+				// Find the angle of inclination of the platform below and set it
+				desiredPlayerTilt = cr.hitBelow.transform.localRotation.eulerAngles.z;	// this shouldn't really be located here, but I have no better place to put it
+				if (desiredPlayerTilt > 180) {
+					desiredPlayerTilt -= 360;
+				}
+			}
 			// We have not landed and we are approaching surface from below, check if we will
 			// land on it this update or not.
 			if (WillLandThisUpdate (deltaTime)) {
@@ -129,8 +153,8 @@ public class PlayerMovement : MonoBehaviour {
 				LandPlayerOnPlatformBelow ();
 				// Finally, see if the platform which we landed on has the FallingPlatform script,
 				// and call its StartFalling () method if it does.
-				if (cr.colliderBelow.tag == "FallingPlatform") {
-					cr.colliderBelow.gameObject.GetComponent<FallingPlatform> ().StartFalling ();
+				if (cr.hitBelow.collider.tag == "FallingPlatform") {
+					cr.hitBelow.collider.gameObject.GetComponent<FallingPlatform> ().StartFalling ();
 				}
 			} else {
 				// We will not land this update, so just add gravity as usual
@@ -145,7 +169,7 @@ public class PlayerMovement : MonoBehaviour {
 		}
 		// See if we will move past the projected point of collision 
 		// above in this frame
-		float heighestPointAfterMovement = transform.position.y 
+		float heighestPointAfterMovement = transform.parent.position.y 
 			+ (currentVerticalVelocity * deltaTime)
 				+ playerExtents.y;
 		return heighestPointAfterMovement >= cr.collisionPointAbove.y;
@@ -157,7 +181,7 @@ public class PlayerMovement : MonoBehaviour {
 		}
 		// See if this frame we will move past the projected point of collision
 		// under us in this frame
-		float lowestPointAfterMovement = transform.position.y 
+		float lowestPointAfterMovement = transform.parent.position.y 
 			+ (currentVerticalVelocity * deltaTime)
 				- playerExtents.y;
 		return lowestPointAfterMovement <= cr.collisionPointBelow.y;
@@ -167,11 +191,10 @@ public class PlayerMovement : MonoBehaviour {
 	// below and rotates it according to the angle at which the platform 
 	// is tilted.
 	void LandPlayerOnPlatformBelow () {
-		// TODO Add code to rotate player according to platform tilt
 		// Set the position of the player to be on top of the platform on which we have landed
-		transform.position = new Vector3 (transform.position.x,
+		transform.parent.position = new Vector3 (transform.parent.position.x,
 		                                  cr.collisionPointBelow.y + playerExtents.y,
-		                                  transform.position.z);
+		                                  transform.parent.position.z);
 	}
 
 	// Accelerates the player down using the specified gravity acceleration
@@ -183,9 +206,9 @@ public class PlayerMovement : MonoBehaviour {
 		}
 
 		// Update position
-		Vector3 tmp = transform.position;
+		Vector3 tmp = transform.parent.position;
 		tmp.y += currentVerticalVelocity * deltaTime;
-		transform.position = tmp;
+		transform.parent.position = tmp;
 	}
 
 	void ResolveHorizontalCollisions (float deltaTime) {
@@ -200,21 +223,44 @@ public class PlayerMovement : MonoBehaviour {
 	// Moves the player left or right on a cirular arc around the cylinder/pole/level
 	// whose center is provided by the vector columnPosition.
 	void MovePlayer (Direction direction, float speed, float deltaTime) {
+		if (direction == Direction.Stopped) {
+			return;
+		}
+		// Deal with tilted platforms first, if the currentTiltAngle is not 0, then we have to
+		// move up, or down, as well as to the side
+		float horizontalDistance;
+		if (desiredPlayerTilt != 0) {
+			float totalDistance = speed * deltaTime;	// How much distance have we passed
+			float verticalDeclination = Mathf.Cos (currentPlayerTilt) * totalDistance;
+			if (direction == Direction.Left) {
+				verticalDeclination *= -1;	// Since tilt is measured in positive values for uphill slope from left to right
+			}								// invert the vertical declination when we are moving from right to left
+			// Apply the declination to the transform
+			Vector3 tmp = transform.parent.position;
+			tmp.y += verticalDeclination;
+			transform.parent.position = tmp;
+			// Now calulate also the horizontal distance
+			horizontalDistance = Mathf.Sin (currentPlayerTilt) * totalDistance;
+		} else {
+			horizontalDistance = speed * deltaTime;
+		}
+
+
 		// Radius is the vector between player's position and center of circle, 
 		// but disregard the y-axis (we are looking at a 2D projection from the top)
-		Vector2 radius = new Vector2 (columnPosition.x - transform.position.x,
-		                              columnPosition.z - transform.position.z);
-		float distanceTravelled = speed * deltaTime;	// How much distance have we passed, 
+		Vector2 radius = new Vector2 (columnPosition.x - transform.parent.position.x,
+		                              columnPosition.z - transform.parent.position.z);
+
 		// remember, this is distance along the arc or arclength
 
 		// Now we find what is the angle between our old position and the new one
-		float angleTravelled = (distanceTravelled * 360) / 
+		float angleTravelled = (horizontalDistance * 360) / 
 			(2 * Mathf.PI * radius.magnitude);
 		// Rotate around the centre of the arc along which we are moving (cylinder centre)
 		if (direction == Direction.Left) {
-			transform.RotateAround (columnPosition, Vector3.up, angleTravelled);
+			transform.parent.RotateAround (columnPosition, Vector3.up, angleTravelled);
 		} else if (direction == Direction.Right) {
-			transform.RotateAround (columnPosition, Vector3.up, -angleTravelled);
+			transform.parent.RotateAround (columnPosition, Vector3.up, -angleTravelled);
 		}
 	}
 }
