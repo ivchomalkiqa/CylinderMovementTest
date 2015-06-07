@@ -69,7 +69,7 @@ public class PlayerMovement : MonoBehaviour {
 		}
 		// Restart if player falls off
 		if (transform.position.y < -10) {
-			Application.LoadLevel(Application.loadedLevel);
+			Application.LoadLevel(0);
 		}
 	}
 
