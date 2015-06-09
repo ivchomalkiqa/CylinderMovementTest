@@ -6,6 +6,10 @@ public class PlayerMovement : MonoBehaviour {
 
 	enum Direction {Left, Right, Stopped};
 
+	// Enables and disables to tilting features which are still not implemented properly
+	// Note that changing this will make certain parts of the code unreachable. That is intentional.
+	public const bool TILT_ENABLED = false;
+
 	public float jumpVelocity;
 	// The script sets the global gravity of the physics engine to this value
 	public float gravityAcceleration;
@@ -78,8 +82,9 @@ public class PlayerMovement : MonoBehaviour {
 		if (transform.parent.position.y < -10) {
 			Application.LoadLevel(Application.loadedLevel);
 		}
+
 		// If the current tilt of the player does not match the desired tilt, interpolate to match it
-		if (currentPlayerTilt != desiredPlayerTilt) {
+		if (TILT_ENABLED && currentPlayerTilt != desiredPlayerTilt) {
 			float angleChange = desiredPlayerTilt - currentPlayerTilt;
 			angleChange = Mathf.Lerp(0, angleChange, Time.deltaTime * tiltingSpeed);
 			currentPlayerTilt += angleChange;
@@ -135,7 +140,7 @@ public class PlayerMovement : MonoBehaviour {
 			}
 		} else {
 			// Update the player desired tilt if necessary
-			if (cr.collidedBelow && currentVerticalVelocity < 0) {
+			if (TILT_ENABLED && cr.collidedBelow && currentVerticalVelocity < 0) {
 				// Find the angle of inclination of the platform below and set it
 				desiredPlayerTilt = cr.hitBelow.transform.localRotation.eulerAngles.z;	// this shouldn't really be located here, but I have no better place to put it
 				if (desiredPlayerTilt > 180) {
@@ -229,7 +234,7 @@ public class PlayerMovement : MonoBehaviour {
 		// Deal with tilted platforms first, if the currentTiltAngle is not 0, then we have to
 		// move up, or down, as well as to the side
 		float horizontalDistance;
-		if (desiredPlayerTilt != 0) {
+		if (TILT_ENABLED && desiredPlayerTilt != 0) {
 			float totalDistance = speed * deltaTime;	// How much distance have we passed
 			float verticalDeclination = Mathf.Cos (currentPlayerTilt) * totalDistance;
 			if (direction == Direction.Left) {
